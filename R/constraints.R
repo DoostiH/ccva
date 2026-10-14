@@ -9,6 +9,13 @@
 #'   and sensitivity raise it, adaptive capacity lowers it; bounds on the
 #'   effects; or adaptive capacity acting only as a *moderator* of exposure
 #'   and sensitivity, with no main effect.
+#' * **Between components** -- the three components are not independent.
+#'   [constrain_link()] declares a directed dependency, e.g. dispersal-driven
+#'   adaptive capacity shaping SDM-derived exposure. In the latent SEM it is
+#'   a structural path, and the indirect and total effects of the source
+#'   component on vulnerability are reported; in the other models it is
+#'   resolved in two stages, by removing from the target component the part
+#'   explained by the source, so it is not counted twice.
 #'
 #' Constraints are built from the `constrain_*()` helpers and collected with
 #' `ccva_constraints()`. The same object is honoured by every combination
@@ -112,10 +119,41 @@ constrain_fixed <- function(target, value) {
   .rule("fixed", target, value = value)
 }
 
+#' @param from,to Components for a directed structural link: `from`
+#'   affects `to` (e.g. adaptive capacity through dispersal shapes the
+#'   SDM-derived exposure a species will face).
+#' @param link_sign Sign of the link: `"free"`, `"+"` or `"-"`.
+#' @rdname ccva_constraints
+#' @export
+constrain_link <- function(from, to, link_sign = c("free", "+", "-")) {
+  link_sign <- match.arg(link_sign)
+  ok <- c(from, to) %in% .ccva_components
+  if (!all(ok) || length(from) != 1 || length(to) != 1)
+    stop("`from` and `to` must each be one of: ",
+         paste(.ccva_components, collapse = ", "), call. = FALSE)
+  if (from == to) stop("A component cannot be linked to itself.",
+                       call. = FALSE)
+  .rule("link", c(from, to), sign = link_sign)
+}
+
+#' @param shape For the shape-constrained model: `"concave"` (e.g. an
+#'   exposure effect that rises steeply then plateaus) or `"convex"`
+#'   (accelerating, e.g. highly sensitive species disproportionately
+#'   affected). Combined with the component's sign this gives monotone
+#'   concave / convex splines. Unimodal shapes are not available.
+#' @rdname ccva_constraints
+#' @export
+constrain_shape <- function(target, shape = c("concave", "convex")) {
+  shape <- match.arg(shape)
+  if (!target %in% .ccva_components)
+    stop("constrain_shape() applies to a component: ",
+         paste(.ccva_components, collapse = ", "), call. = FALSE)
+  .rule("shape", target, shape = shape)
+}
+
 #' @param gamma Moderation strengths `c(exposure, sensitivity)` used by the
 #'   weighted method: adaptive capacity reduces the exposure and sensitivity
-#'   effects by up to these proportions. Defaults follow Drew's framework as
-#'   used in the Doosti (2026) report.
+#'   effects by up to these proportions.
 #' @rdname ccva_constraints
 #' @export
 constrain_moderator <- function(gamma = c(0.5, 0.4)) {
@@ -141,6 +179,7 @@ print.ccva_constraints <- function(x, ...) {
 format.ccva_rule <- function(x, ...) {
   tgt <- if (identical(x$target, ".indicators")) "all indicators & outcomes"
          else paste(x$target, collapse = " = ")
+  if (x$type == "link") tgt <- paste(x$target, collapse = " -> ")
   lvl <- if (all(x$target %in% .ccva_components)) "component" else "predictor"
   switch(x$type,
     sign = if (x$sign == "direction")
@@ -152,6 +191,10 @@ format.ccva_rule <- function(x, ...) {
     fixed = sprintf("[%s] %s fixed at %s%s", lvl, tgt, x$value,
                     if (x$value == 0) " (dropped)" else ""),
     moderator = "[component] adaptive capacity acts only as a moderator",
+    shape = sprintf("[component] %s: %s shape", tgt, x$shape),
+    link = sprintf("[link] %s -> %s%s", x$target[1], x$target[2],
+                   switch(x$sign, free = "", "+" = " (positive)",
+                          "-" = " (negative)")),
     sprintf("[%s] %s", x$type, tgt))
 }
 
@@ -172,10 +215,12 @@ format.ccva_rule <- function(x, ...) {
   ind_fixed <- list()
   equal <- list()
   moderator <- NULL
+  links <- list()
+  comp_shape <- list()
 
   for (r in constraints$rules) {
     tg <- r$target
-    is_comp <- all(tg %in% .ccva_components)
+    is_comp <- all(tg %in% .ccva_components) || r$type == "link"
     if (!is_comp && !identical(tg, ".indicators")) {
       bad <- setdiff(tg, cols)
       if (length(bad))
@@ -212,6 +257,19 @@ format.ccva_rule <- function(x, ...) {
                call. = FALSE)
         equal[[length(equal) + 1]] <- tg
       },
+      shape = { comp_shape[[tg]] <- r$shape },
+      link = {
+        miss <- setdiff(tg, comps)
+        if (length(miss))
+          stop("constrain_link(): no indicators for ",
+               paste(miss, collapse = ", "), call. = FALSE)
+        for (l in links)
+          if (identical(l$from, tg[2]) && identical(l$to, tg[1]))
+            stop("Links ", tg[1], " -> ", tg[2], " and the reverse form a ",
+                 "cycle.", call. = FALSE)
+        links[[paste(tg, collapse = "->")]] <-
+          list(from = tg[1], to = tg[2], sign = r$sign)
+      },
       moderator = {
         if (!"adaptive" %in% comps)
           stop("constrain_moderator() needs adaptive-capacity indicators.",
@@ -222,7 +280,9 @@ format.ccva_rule <- function(x, ...) {
   list(comp_sign = comp_sign[comps], comp_bounds = comp_bounds,
        comp_fixed = comp_fixed, ind_sign = ind_sign,
        ind_bounds = ind_bounds, ind_fixed = ind_fixed, equal = equal,
-       moderator = moderator, n_rules = length(constraints$rules),
+       moderator = moderator, links = unname(links),
+       comp_shape = comp_shape,
+       n_rules = length(constraints$rules),
        object = constraints)
 }
 

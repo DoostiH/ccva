@@ -24,8 +24,12 @@ assumption is usually checked. This function checks both:
 }
 \details{
 * **internal consistency** of each component -- Cronbach's alpha (raw and
-  standardised) and corrected item-total correlations of its oriented
-  indicators;
+  standardised), the mean inter-item correlation (which, unlike alpha,
+  does not rise with the number of indicators) and corrected item-total
+  correlations of its oriented indicators. Alpha is only expected to be
+  high for *reflective* components, whose indicators are interchangeable
+  measures; for components declared `formative` in [as_ccva()] (distinct,
+  complementary facets) a low alpha is expected and is not flagged;
 * **cross-component correlation** of the component scores (Spearman);
 * **redundancy** -- indicator pairs, within or across components, with
   absolute Spearman correlation above `redundancy`;

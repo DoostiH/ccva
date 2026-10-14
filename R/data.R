@@ -27,6 +27,14 @@
 #'   value is range loss, takes `-1`.
 #' @param coords Optional character vector of two column names (longitude,
 #'   latitude) used by [ccva_plot()] for maps.
+#' @param formative Optional components whose indicators are complementary
+#'   *facets* rather than interchangeable measures of one construct -- e.g.
+#'   adaptive capacity from dispersal ability and genetic diversity, which act
+#'   through distinct mechanisms. Their indicators are not expected to
+#'   covary, so [ccva_check()] does not flag a low Cronbach's alpha, and the
+#'   latent model enters them as a composite (built by the component scoring
+#'   method) instead of a reflective latent factor. Components not listed are
+#'   reflective: their indicators are treated as interchangeable measures.
 #' @param na_action `"omit"` (default) drops rows with missing values in any
 #'   used column, with a message; `"fail"` stops instead.
 #'
@@ -44,7 +52,8 @@
 #' d
 as_ccva <- function(data, exposure, sensitivity, adaptive = NULL,
                     outcomes = NULL, id = NULL, direction = NULL,
-                    coords = NULL, na_action = c("omit", "fail")) {
+                    coords = NULL, formative = NULL,
+                    na_action = c("omit", "fail")) {
   na_action <- match.arg(na_action)
   if (!is.data.frame(data)) stop("`data` must be a data frame.", call. = FALSE)
   data <- as.data.frame(data)
@@ -103,6 +112,8 @@ as_ccva <- function(data, exposure, sensitivity, adaptive = NULL,
                                call. = FALSE)
 
   dir <- .parse_direction(direction, used)
+  formative <- if (is.null(formative)) character(0) else
+    match.arg(formative, .ccva_components, several.ok = TRUE)
 
   structure(list(
     data = data,
@@ -111,7 +122,8 @@ as_ccva <- function(data, exposure, sensitivity, adaptive = NULL,
     indicators = ind,
     outcomes = outcomes,
     direction = dir,
-    coords = coords
+    coords = coords,
+    formative = formative
   ), class = "ccva_data")
 }
 
@@ -121,9 +133,10 @@ print.ccva_data <- function(x, ...) {
   for (cmp in .ccva_components) {
     v <- x$indicators[[cmp]]
     if (!length(v)) next
-    cat(sprintf("  %-18s %2d indicator%s: %s\n", .ccva_labels[[cmp]],
+    cat(sprintf("  %-18s %2d indicator%s: %s%s\n", .ccva_labels[[cmp]],
                 length(v), if (length(v) == 1) " " else "s",
-                .abbrev(.signed(v, x$direction))))
+                .abbrev(.signed(v, x$direction)),
+                if (cmp %in% x$formative) "  [formative]" else ""))
   }
   if (length(x$outcomes))
     cat(sprintf("  %-18s %2d proxy%s:     %s\n", "Outcomes",

@@ -12,6 +12,7 @@ ccva_simulate(
   sd_zeta = 0.3,
   n_genomic = 0,
   n_causal = 10,
+  link_AE = 0,
   seed = NULL
 )
 }
@@ -35,6 +36,11 @@ outnumber units. The first `n_causal` markers carry signal from
 \eqn{A^*}; the rest are noise.}
 
 \item{n_causal}{Number of informative genomic markers.}
+
+\item{link_AE}{Strength of a directed dependency of exposure on adaptive
+capacity, \eqn{E^* \leftarrow E^* + link_{AE} A^*}. A negative value
+mimics dispersal: species with more capacity to move face less of the
+SDM-derived exposure. Default 0 (no link).}
 
 \item{seed}{Optional random seed.}
 }

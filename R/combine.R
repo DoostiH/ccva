@@ -117,8 +117,26 @@ ccva_combine <- function(x, method = c("weighted", "shape", "latent",
   cs <- as.data.frame(lapply(components, `[[`, "score"))
   rownames(cs) <- x$id
 
-  ## 2. combination -----------------------------------------------------------
+  ## 2. links between components (two-stage outside the SEM) -----------------
   notes <- character(0)
+  if (length(cons$comp_shape) && method != "shape")
+    notes <- c(notes, "constrain_shape() applies only to method = \"shape\" and was not used")
+  link_info <- NULL
+  if (length(cons$links) && method != "latent") {
+    if (method == "penalised") {
+      notes <- c(notes, "component links are not used by the penalised model (it works on indicators)")
+    } else {
+      lk <- .two_stage_links(components, cons$links)
+      components <- lk$components
+      link_info <- lk$info
+      cs <- as.data.frame(lapply(components, `[[`, "score"))
+      rownames(cs) <- x$id
+      notes <- c(notes, sprintf("two-stage link: %s adjusted for %s (R2 = %.2f)",
+                                lk$info$to, lk$info$from, lk$info$r2))
+    }
+  }
+
+  ## 3. combination -----------------------------------------------------------
   res <- switch(method,
     weighted = .comb_weighted(cs, comps, weights, cons, components),
     shape = .comb_shape(x, cs, comps, cons, response, k, components),
@@ -154,8 +172,33 @@ ccva_combine <- function(x, method = c("weighted", "shape", "latent",
     constraints = cons, notes = notes,
     raw_range = c(lo, hi)
   ), class = "ccva_fit")
+  if (!is.null(link_info)) fit$details$links <- link_info
   fit$predict_raw <- res$predict
   fit
+}
+
+# Two-stage resolution of directed links: the target component is replaced
+# by its part not explained by the source (rescaled to [0, 1]).
+.two_stage_links <- function(components, links) {
+  info <- list()
+  for (l in links) {
+    src <- components[[l$from]]; tgt <- components[[l$to]]
+    fit <- stats::lm(tgt$score ~ src$score)
+    b <- stats::coef(fit)[2]
+    ms <- mean(src$score)
+    adj <- tgt$score - b * (src$score - ms)
+    lo <- min(adj); hi <- max(adj)
+    p_t <- tgt$predict; p_s <- src$predict
+    tgt$score <- stats::setNames(.rescale01(adj), names(tgt$score))
+    tgt$predict <- function(newdata)
+      .rescale01(p_t(newdata) - b * (p_s(newdata) - ms), lo, hi)
+    tgt$adjusted_for <- l$from
+    components[[l$to]] <- tgt
+    info[[length(info) + 1]] <- data.frame(
+      from = l$from, to = l$to, slope = unname(b),
+      r2 = summary(fit)$r.squared, method = "two-stage")
+  }
+  list(components = components, info = do.call(rbind, info))
 }
 
 #' Run a complete CCVA
@@ -208,6 +251,24 @@ print.ccva_fit <- function(x, ...) {
     cat("  effects on V*:", paste(sprintf("%s %+.2f", e$component,
                                           e$std), collapse = ", "),
         "(standardised)\n")
+  }
+  if (!is.null(x$details$links)) {
+    lk <- x$details$links
+    for (i in seq_len(nrow(lk))) {
+      if (lk$method[i] == "structural path")
+        cat(sprintf("  link %s -> %s: %+.2f (standardised)\n", lk$from[i],
+                    lk$to[i], lk$std[i]))
+      else
+        cat(sprintf("  link %s -> %s: two-stage, %.0f%% of %s explained by %s removed\n",
+                    lk$from[i], lk$to[i], 100 * lk$r2[i], lk$to[i], lk$from[i]))
+    }
+  }
+  if (!is.null(x$details$total_effects)) {
+    te <- x$details$total_effects
+    for (i in seq_len(nrow(te)))
+      cat(sprintf("  total effect of %s on V*: %+.2f = direct %+.2f + indirect %+.2f (%s)\n",
+                  te$component[i], te$total[i], te$direct[i], te$indirect[i],
+                  te$routes[i]))
   }
   if (!is.null(x$details$n_selected))
     cat(sprintf("  selected predictors: %d of %d\n", x$details$n_selected,
@@ -341,7 +402,13 @@ ccva_rank <- function(fit, uncertainty = NULL) {
       fx <- cons$comp_fixed[[cmp]]
       if (!is.null(fx) && fx == 0) { used <- setdiff(used, cmp); next }
       sg <- cons$comp_sign[[cmp]]
-      bs <- if (is.na(sg)) "cr" else if (sg > 0) "mpi" else "mpd"
+      cv <- cons$comp_shape[[cmp]]
+      bs <- if (is.null(cv)) {
+        if (is.na(sg)) "cr" else if (sg > 0) "mpi" else "mpd"
+      } else {
+        paste0(if (is.na(sg)) "" else if (sg > 0) "mi" else "md",
+               if (cv == "concave") "cv" else "cx")
+      }
       terms <- c(terms, sprintf("s(%s, bs = \"%s\", k = %d)", cmp, bs, k))
     }
   }
@@ -421,12 +488,15 @@ ccva_rank <- function(fit, uncertainty = NULL) {
   for (cmp in comps) {
     vars <- components[[cmp]]$indicators
     lv <- .ccva_latent[[cmp]]
-    if (length(vars) < 2 || length(vars) > max_indicators) {
+    if (cmp %in% x$formative || length(vars) < 2 ||
+        length(vars) > max_indicators) {
       Z[[lv]] <- as.numeric(scale(components[[cmp]]$score))
       observed_comp <- c(observed_comp, cmp)
-      notes <- c(notes, sprintf("%s entered as its observed component score (%d indicator%s)",
-                                cmp, length(vars),
-                                if (length(vars) == 1) "" else "s"))
+      notes <- c(notes, if (cmp %in% x$formative)
+        sprintf("%s is formative: entered as a composite of its %d indicators",
+                cmp, length(vars))
+        else sprintf("%s entered as its observed component score (%d indicator%s)",
+                     cmp, length(vars), if (length(vars) == 1) "" else "s"))
     } else {
       tm <- unlist(lapply(vars, loading_term))
       lines <- c(lines, sprintf("%s =~ %s", lv, paste(tm, collapse = " + ")))
@@ -479,11 +549,32 @@ ccva_rank <- function(fit, uncertainty = NULL) {
     sterms <- c(sterms, sprintf("%s*%s", lab, lv))
   }
   lines <- c(lines, sprintf("%s ~ %s", vname, paste(sterms, collapse = " + ")))
-  # correlated latent components
+  # directed links between components, with indirect and total effects
+  lv_of <- stats::setNames(struct_rhs, comps)
+  linked_pairs <- character(0)
+  defs <- character(0)
+  for (l in cons$links) {
+    klab <- sprintf("k_%s_%s", l$from, l$to)
+    lines <- c(lines, sprintf("%s ~ %s*%s", lv_of[[l$to]], klab,
+                              lv_of[[l$from]]))
+    if (l$sign != "free")
+      ineq <- c(ineq, sprintf("%s %s 0", klab, if (l$sign == "+") ">" else "<"))
+    linked_pairs <- c(linked_pairs, paste(sort(c(lv_of[[l$from]],
+                                                 lv_of[[l$to]])),
+                                          collapse = "|"))
+    if (is.null(cons$comp_fixed[[l$to]]))
+      defs <- c(defs, sprintf("ind_%s_%s := %s*b_%s", l$from, l$to, klab,
+                              l$to))
+  }
+  # correlated latent components (not for pairs joined by a directed link)
   if (length(latent_comps) >= 2) {
     pr <- utils::combn(latent_comps, 2)
-    lines <- c(lines, sprintf("%s ~~ %s", pr[1, ], pr[2, ]))
+    keep <- !apply(pr, 2, function(v) paste(sort(v), collapse = "|")) %in%
+      linked_pairs
+    if (any(keep))
+      lines <- c(lines, sprintf("%s ~~ %s", pr[1, keep], pr[2, keep]))
   }
+  ineq <- c(ineq, defs)
   model <- paste(c(lines, unique(ineq)), collapse = "\n")
 
   fit <- .lavaan_fit(model, Z)
@@ -508,6 +599,33 @@ ccva_rank <- function(fit, uncertainty = NULL) {
                         estimate = st$est, se = st$se,
                         std = st$std.all, pvalue = st$pvalue,
                         row.names = NULL)
+  link_tab <- NULL; total_tab <- NULL
+  if (length(cons$links)) {
+    link_tab <- do.call(rbind, lapply(cons$links, function(l) {
+      k <- pe[pe$op == "~" & pe$lhs == lv_of[[l$to]] &
+                pe$rhs == lv_of[[l$from]], ]
+      ind <- pe[pe$op == ":=" & pe$lhs == sprintf("ind_%s_%s", l$from, l$to), ]
+      data.frame(from = l$from, to = l$to, estimate = k$est, std = k$std.all,
+                 pvalue = k$pvalue,
+                 indirect = if (nrow(ind)) ind$std.all else NA_real_,
+                 method = "structural path", row.names = NULL)
+    }))
+    # total effect of each linked source component on V*:
+    # direct path + one indirect path through every component it modifies
+    srcs <- unique(link_tab$from)
+    total_tab <- do.call(rbind, lapply(srcs, function(cmp) {
+      d <- effects$std[effects$component == cmp]
+      d <- if (length(d)) d else 0
+      lk <- link_tab[link_tab$from == cmp, ]
+      via <- stats::setNames(lk$indirect, paste0("via_", lk$to))
+      data.frame(component = cmp, direct = d,
+                 indirect = sum(lk$indirect, na.rm = TRUE),
+                 total = d + sum(lk$indirect, na.rm = TRUE),
+                 routes = paste(sprintf("via %s %+.2f", lk$to, lk$indirect),
+                                collapse = "; "),
+                 row.names = NULL)
+    }))
+  }
   ld <- pe[pe$op == "=~" & !grepl("^Shared", pe$lhs), ]
   loadings <- data.frame(factor = ld$lhs, indicator = ld$rhs,
                          estimate = ld$est, std = ld$std.all,
@@ -526,7 +644,8 @@ ccva_rank <- function(fit, uncertainty = NULL) {
                       fit_measures = unlist(fm), effects = effects,
                       loadings = loadings, sign_flipped = flip,
                       latent_scores = latent_scores,
-                      score_se = score_se,
+                      score_se = score_se, links = link_tab,
+                      total_effects = total_tab,
                       n_inequality = length(unique(ineq)),
                       observed_components = observed_comp),
        notes = notes,

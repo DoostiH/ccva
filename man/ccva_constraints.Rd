@@ -8,6 +8,8 @@
 \alias{constrain_bounds}
 \alias{constrain_equal}
 \alias{constrain_fixed}
+\alias{constrain_link}
+\alias{constrain_shape}
 \alias{constrain_moderator}
 \title{Constraints on predictors and components}
 \usage{
@@ -24,6 +26,10 @@ constrain_bounds(target, lower = -Inf, upper = Inf)
 constrain_equal(targets)
 
 constrain_fixed(target, value)
+
+constrain_link(from, to, link_sign = c("free", "+", "-"))
+
+constrain_shape(target, shape = c("concave", "convex"))
 
 constrain_moderator(gamma = c(0.5, 0.4))
 }
@@ -51,10 +57,21 @@ same component) whose loadings / weights are constrained equal.}
 
 \item{value}{Fixed value. `0` removes the indicator or component effect.}
 
+\item{from, to}{Components for a directed structural link: `from`
+affects `to` (e.g. adaptive capacity through dispersal shapes the
+SDM-derived exposure a species will face).}
+
+\item{link_sign}{Sign of the link: `"free"`, `"+"` or `"-"`.}
+
+\item{shape}{For the shape-constrained model: `"concave"` (e.g. an
+exposure effect that rises steeply then plateaus) or `"convex"`
+(accelerating, e.g. highly sensitive species disproportionately
+affected). Combined with the component's sign this gives monotone
+concave / convex splines. Unimodal shapes are not available.}
+
 \item{gamma}{Moderation strengths `c(exposure, sensitivity)` used by the
 weighted method: adaptive capacity reduces the exposure and sensitivity
-effects by up to these proportions. Defaults follow Drew's framework as
-used in the Doosti (2026) report.}
+effects by up to these proportions.}
 }
 \value{
 An object of class `ccva_constraints`.
@@ -70,6 +87,13 @@ Ecological knowledge enters a CCVA as explicit constraints, at two levels:
   and sensitivity raise it, adaptive capacity lowers it; bounds on the
   effects; or adaptive capacity acting only as a *moderator* of exposure
   and sensitivity, with no main effect.
+* **Between components** -- the three components are not independent.
+  [constrain_link()] declares a directed dependency, e.g. dispersal-driven
+  adaptive capacity shaping SDM-derived exposure. In the latent SEM it is
+  a structural path, and the indirect and total effects of the source
+  component on vulnerability are reported; in the other models it is
+  resolved in two stages, by removing from the target component the part
+  explained by the source, so it is not counted twice.
 
 Constraints are built from the `constrain_*()` helpers and collected with
 `ccva_constraints()`. The same object is honoured by every combination

@@ -5,8 +5,12 @@
 #' assumption is usually checked. This function checks both:
 #'
 #' * **internal consistency** of each component -- Cronbach's alpha (raw and
-#'   standardised) and corrected item-total correlations of its oriented
-#'   indicators;
+#'   standardised), the mean inter-item correlation (which, unlike alpha,
+#'   does not rise with the number of indicators) and corrected item-total
+#'   correlations of its oriented indicators. Alpha is only expected to be
+#'   high for *reflective* components, whose indicators are interchangeable
+#'   measures; for components declared `formative` in [as_ccva()] (distinct,
+#'   complementary facets) a low alpha is expected and is not flagged;
 #' * **cross-component correlation** of the component scores (Spearman);
 #' * **redundancy** -- indicator pairs, within or across components, with
 #'   absolute Spearman correlation above `redundancy`;
@@ -33,16 +37,19 @@ ccva_check <- function(x, redundancy = 0.9, component_method = "mean") {
     k <- ncol(X)
     if (k < 2 || k > n) {
       return(data.frame(component = cmp, n_indicators = k, alpha = NA,
-                        alpha_std = NA, p_over_n = k / n))
+                        alpha_std = NA, mean_r = NA, p_over_n = k / n))
     }
+    R <- stats::cor(X)
     data.frame(component = cmp, n_indicators = k,
                alpha = .cronbach(X), alpha_std = .cronbach(scale(X)),
-               p_over_n = k / n)
+               mean_r = mean(R[upper.tri(R)]), p_over_n = k / n)
   }))
   alpha$verdict <- cut(alpha$alpha, c(-Inf, 0.6, 0.7, 0.8, Inf),
                        labels = c("questionable", "acceptable-",
                                   "acceptable", "good"), right = FALSE)
   alpha$verdict <- as.character(alpha$verdict)
+  alpha$verdict[alpha$component %in% x$formative] <-
+    "formative: alpha not required"
   alpha$verdict[alpha$p_over_n >= 0.5] <- "high-dimensional: use penalised"
 
   item_total <- do.call(rbind, lapply(comps, function(cmp) {
@@ -86,12 +93,15 @@ print.ccva_check <- function(x, ...) {
   cat("<ccva_check> internal consistency (Cronbach's alpha)\n")
   a <- x$alpha
   for (i in seq_len(nrow(a)))
-    cat(sprintf("  %-12s %3d indicators  alpha %s  (std %s)  %s\n",
+    cat(sprintf("  %-12s %3d indicators  alpha %s  (std %s)  mean r %s  %s\n",
                 a$component[i], a$n_indicators[i],
                 if (is.na(a$alpha[i])) "  -  " else sprintf("%.3f", a$alpha[i]),
                 if (is.na(a$alpha_std[i])) "  -  " else
-                  sprintf("%.3f", a$alpha_std[i]), a$verdict[i]))
-  cat("  guide: >= 0.8 good, >= 0.7 acceptable, < 0.6 questionable\n")
+                  sprintf("%.3f", a$alpha_std[i]),
+                if (is.na(a$mean_r[i])) "  -  " else sprintf("%.2f", a$mean_r[i]),
+                a$verdict[i]))
+  cat("  guide (reflective components): >= 0.8 good, >= 0.7 acceptable, < 0.6 questionable;\n",
+      " alpha rises with the number of indicators, so compare mean r too\n")
   cat("\ncross-component Spearman correlations\n")
   print(round(x$component_cor, 3))
   if (is.null(x$redundant)) {

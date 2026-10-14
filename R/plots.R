@@ -344,6 +344,12 @@ ccva_plot.ccva_fit <- function(object, type = NULL, n = 15, ...) {
                    sprintf(" | CFI %.2f, RMSEA %.3f",
                            fit$details$fit_measures[["cfi"]],
                            fit$details$fit_measures[["rmsea"]]) else "")
+  te <- fit$details$total_effects
+  if (!is.null(te))
+    cap <- paste0(cap, " | total effect: ",
+                  paste(sprintf("%s %+.2f (direct %+.2f, indirect %+.2f)",
+                                te$component, te$total, te$direct,
+                                te$indirect), collapse = "; "))
   mod <- !is.null(cons$moderator) && "adaptive" %in% comps
   p <- ggplot2::ggplot() +
     ggplot2::geom_segment(data = if (mod) edges[edges$component != "adaptive", ]
@@ -364,14 +370,49 @@ ccva_plot.ccva_fit <- function(object, type = NULL, n = 15, ...) {
       linetype = 2, curvature = 0.25, linewidth = 0.9,
       arrow = ggplot2::arrow(length = ggplot2::unit(2.5, "mm")))
   }
+  lk <- fit$details$links
+  linked <- if (is.null(lk)) character(0) else
+    apply(lk[c("from", "to")], 1, function(v) paste(sort(v), collapse = "|"))
   if (length(comps) >= 2 && fit$method == "latent") {
     cy <- sort(ypos)
-    p <- p + ggplot2::geom_curve(
-      data = data.frame(x = 0.42, y = utils::head(cy, -1) + 0.08,
-                        xend = 0.42, yend = cy[-1] - 0.08),
-      ggplot2::aes(x, y, xend = xend, yend = yend), curvature = 0.5,
-      colour = "#9a9a94", linewidth = 0.5,
-      arrow = ggplot2::arrow(length = ggplot2::unit(2, "mm"), ends = "both"))
+    pr <- data.frame(a = names(sort(ypos))[-length(cy)],
+                     b = names(sort(ypos))[-1])
+    pr <- pr[!apply(pr, 1, function(v) paste(sort(v), collapse = "|")) %in%
+               linked, , drop = FALSE]
+    if (nrow(pr))
+      p <- p + ggplot2::geom_curve(
+        data = data.frame(x = 0.42, y = ypos[pr$a] + 0.08,
+                          xend = 0.42, yend = ypos[pr$b] - 0.08),
+        ggplot2::aes(x, y, xend = xend, yend = yend), curvature = 0.5,
+        colour = "#9a9a94", linewidth = 0.5,
+        arrow = ggplot2::arrow(length = ggplot2::unit(2, "mm"),
+                               ends = "both"))
+  }
+  # directed links between components (causal diagram)
+  if (!is.null(lk) && nrow(lk)) {
+    ld <- data.frame(from = lk$from, to = lk$to,
+                     y = ypos[lk$from], yend = ypos[lk$to])
+    ld$dist <- abs(ld$y - ld$yend)
+    ld$x <- 0.46 - 0.05 * (ld$dist - 1)
+    ld$lab <- if (lk$method[1] == "structural path")
+      sprintf("%+.2f", lk$std) else "two-stage"
+    ld$lx <- ld$x - 0.2 - 0.12 * (ld$dist - 1)
+    ld$ly <- (ld$y + ld$yend) / 2
+    for (i in seq_len(nrow(ld))) {
+      di <- ld[i, ]
+      dir <- if (di$yend > di$y) -1 else 1
+      p <- p + ggplot2::geom_curve(
+        data = data.frame(x = di$x, y = di$y + 0.15 * sign(di$yend - di$y),
+                          xend = di$x, yend = di$yend - 0.15 * sign(di$yend - di$y)),
+        ggplot2::aes(x, y, xend = xend, yend = yend),
+        curvature = 0.45 * dir, colour = ccva_colours[[di$from]],
+        linewidth = 1, linetype = if (di$lab == "two-stage") 2 else 1,
+        arrow = ggplot2::arrow(length = ggplot2::unit(2.5, "mm"),
+                               type = "closed"))
+    }
+    p <- p + ggplot2::geom_label(data = ld, ggplot2::aes(lx, ly, label = lab),
+                                 size = 3, label.size = 0, fill = "white",
+                                 colour = "#33332f")
   }
   p + ggplot2::geom_label(data = edges[!(mod & edges$component == "adaptive"), ],
                           ggplot2::aes(lx, ly, label = label),
@@ -384,10 +425,12 @@ ccva_plot.ccva_fit <- function(object, type = NULL, n = 15, ...) {
                         label.size = 0) +
     ggplot2::scale_colour_manual(values = ccva_colours, guide = "none") +
     ggplot2::scale_fill_manual(values = ccva_colours, guide = "none") +
-    ggplot2::scale_x_continuous(limits = c(0.3, 3.75)) +
+    ggplot2::scale_x_continuous(limits = c(if (is.null(lk)) 0.3 else -0.05,
+                                           3.75)) +
     ggplot2::scale_y_continuous(limits = c(0.5, 3.5)) +
     ggplot2::labs(title = "How the components combine into vulnerability",
-                  subtitle = if (mod) "Adaptive capacity acts only as a moderator (dashed)"
+                  subtitle = if (!is.null(lk)) "Causal diagram: directed links between components (left) and effects on vulnerability"
+                  else if (mod) "Adaptive capacity acts only as a moderator (dashed)"
                   else if (fit$method == "latent")
                     "Latent components (correlated, grey) with standardised effects on latent vulnerability"
                   else NULL,
@@ -714,4 +757,112 @@ ccva_plot.ccva_uncertainty <- function(object, type = NULL, n = 40, ...) {
     ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, hjust = 1,
                                                        vjust = 0.5),
                    panel.grid = ggplot2::element_blank())
+}
+
+## ccva_calibration ---------------------------------------------------------------
+
+#' @export
+plot.ccva_calibration <- function(x, ...) ccva_plot(x, ...)
+#' @export
+plot.ccva_sites <- function(x, ...) ccva_plot(x, ...)
+
+#' @export
+ccva_plot.ccva_calibration <- function(object, type = NULL, n = 25, ...) {
+  type <- match.arg(type %||% "curve", c("curve", "risk", "reliability"))
+  lab <- sprintf("P(%s >= %s)", object$outcome, format(object$threshold))
+  if (type == "curve") {
+    u <- object$units
+    u$y <- ifelse(u$event, 1, 0)
+    return(
+      ggplot2::ggplot(object$curve, ggplot2::aes(score, probability)) +
+        ggplot2::geom_ribbon(ggplot2::aes(ymin = lower, ymax = upper),
+                             fill = ccva_colours[["vulnerability"]],
+                             alpha = 0.18) +
+        ggplot2::geom_line(colour = ccva_colours[["vulnerability"]],
+                           linewidth = 1.2) +
+        ggplot2::geom_jitter(data = u, ggplot2::aes(score, y), height = 0.025,
+                             width = 0, size = 1, alpha = 0.35,
+                             colour = "#45453f") +
+        ggplot2::scale_y_continuous(limits = c(-0.05, 1.05),
+                                    breaks = seq(0, 1, 0.25)) +
+        ggplot2::labs(title = "From vulnerability score to risk",
+                      subtitle = sprintf("Calibrated %s with %d%% interval; AUC %.2f",
+                                         lab, round(100 * object$level),
+                                         object$metrics[["auc"]]),
+                      x = "Vulnerability score", y = "Probability",
+                      caption = paste0("Dots: observed events (top) and non-events (bottom).",
+                        if (object$in_sample)
+                          " In-sample: this outcome was also used to fit the vulnerability model." else "")) +
+        theme_ccva())
+  }
+  if (type == "reliability") {
+    b <- object$bins
+    return(
+      ggplot2::ggplot(b, ggplot2::aes(predicted, observed)) +
+        ggplot2::geom_abline(linetype = 2, colour = "#9a9a94") +
+        ggplot2::geom_line(colour = ccva_colours[["vulnerability"]]) +
+        ggplot2::geom_point(colour = ccva_colours[["vulnerability"]],
+                            size = 3.5) +
+        ggplot2::coord_equal(xlim = c(0, 1), ylim = c(0, 1)) +
+        ggplot2::labs(title = "Are the predicted risks reliable?",
+                      subtitle = sprintf("Quintiles of predicted risk (about %d units each)",
+                                         round(mean(b$n))),
+                      caption = "Dashed line = perfect calibration.",
+                      x = "Predicted probability", y = "Observed frequency") +
+        theme_ccva())
+  }
+  u <- utils::head(object$units, n)
+  u$unit <- factor(u$unit, levels = rev(u$unit))
+  ggplot2::ggplot(u, ggplot2::aes(probability, unit)) +
+    ggplot2::geom_errorbarh(ggplot2::aes(xmin = lower, xmax = upper),
+                            height = 0, linewidth = 1.6, colour = "#cbbad9") +
+    ggplot2::geom_point(colour = ccva_colours[["vulnerability"]], size = 2.4) +
+    ggplot2::scale_x_continuous(limits = c(0, 1)) +
+    ggplot2::labs(title = sprintf("Risk of decline for the %d highest-risk units", nrow(u)),
+                  subtitle = sprintf("%s with %d%% intervals%s", lab,
+                                     round(100 * object$level),
+                                     if (object$propagated) "; score uncertainty propagated" else ""),
+                  x = "Probability", y = NULL) +
+    theme_ccva()
+}
+
+#' @export
+ccva_plot.ccva_sites <- function(object, type = NULL, n = 25, ...) {
+  type <- match.arg(type %||% "ranking", c("ranking", "map"))
+  d <- as.data.frame(unclass(object))
+  if (type == "map") {
+    if (!all(c("x", "y") %in% names(d)))
+      stop("No site coordinates: pass `coords` to ccva_aggregate().",
+           call. = FALSE)
+    return(
+      ggplot2::ggplot(d, ggplot2::aes(x, y)) +
+        ggplot2::geom_point(ggplot2::aes(size = n_species,
+                                         colour = mean_vulnerability),
+                            alpha = 0.9) +
+        ggplot2::scale_colour_gradient(low = "#d9cbe6", high = "#4b2a6b",
+                                       name = "Mean\nvulnerability") +
+        ggplot2::scale_size_area(max_size = 7, name = "Species") +
+        ggplot2::coord_quickmap() +
+        ggplot2::labs(title = "Where vulnerable communities are",
+                      x = NULL, y = NULL) +
+        theme_ccva())
+  }
+  d <- utils::head(d, n)
+  d$site <- factor(d$site, levels = rev(d$site))
+  p <- ggplot2::ggplot(d, ggplot2::aes(mean_vulnerability, site))
+  if (!is.null(d$lower))
+    p <- p + ggplot2::geom_errorbarh(ggplot2::aes(xmin = lower, xmax = upper),
+                                     height = 0, linewidth = 1.6,
+                                     colour = "#cbbad9")
+  xr <- max(c(d$mean_vulnerability, d$upper), na.rm = TRUE)
+  p + ggplot2::geom_point(colour = ccva_colours[["vulnerability"]], size = 2.8) +
+    ggplot2::geom_text(ggplot2::aes(x = xr, label = sprintf("%d spp, %d%% high",
+                                                         n_species,
+                                                         round(100 * share_high))),
+                       hjust = -0.1, size = 3, colour = "#5c5c57") +
+    ggplot2::scale_x_continuous(expand = ggplot2::expansion(mult = c(0.05, 0.35))) +
+    ggplot2::labs(title = "Which communities are most vulnerable?",
+                  subtitle = "Mean vulnerability of each site's species, with interval when uncertainty is supplied",
+                  x = "Mean vulnerability", y = NULL) +
+    theme_ccva()
 }

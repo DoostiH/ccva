@@ -103,19 +103,40 @@ fit, while free estimation failed to converge in 10–28% of fits (identical
 estimates when both converge). Sign constraints on loadings also stop latent
 scores from coming out upside down.
 
+## Causal links and calibrated risk
+
+Adaptive capacity often acts *through* the other components — range shifts
+change exposure, plasticity or evolution changes sensitivity. Declaring
+these links makes the causal hypothesis explicit, avoids double-counting,
+and splits the effect of adaptive capacity into direct and indirect parts:
+
+```r
+causal <- ccva_combine(d, "latent",
+  shared_error = list(c("E1_risk", "E2_risk", "E3_risk")),
+  constraints = ccva_constraints(
+    constrain_link("adaptive", "exposure", "-"),
+    constrain_link("adaptive", "sensitivity", "-")))
+
+# From rankings to the probability of an observed outcome, with intervals
+risk <- ccva_calibrate(causal, outcome = "iucn",
+                       uncertainty = ccva_uncertainty(causal))
+```
+
 ## Functions at a glance
 
 | Stage | Functions |
 |---|---|
-| Data | `as_ccva()`, `ccva_simulate()`, `ccva_sim_data()`, `ccva_sdm_exposure()`, `ccva_thermal_margin()` |
+| Data | `as_ccva()`, `ccva_simulate()`, `ccva_sim_data()`, `ccva_sdm_exposure()`, `ccva_thermal_margin()`, `ccva_adjust_method()` |
 | Components | `ccva_exposure()`, `ccva_sensitivity()`, `ccva_adaptive()` |
 | Vulnerability | `ccva_combine()`, `ccva()` |
-| Constraints | `ccva_constraints()`, `constrain_sign()`, `constrain_bounds()`, `constrain_equal()`, `constrain_fixed()`, `constrain_moderator()` |
-| Assessment | `ccva_check()`, `ccva_validate()`, `ccva_compare()`, `ccva_uncertainty()`, `ccva_classify()`, `ccva_rank()` |
+| Constraints | `ccva_constraints()`, `constrain_sign()`, `constrain_bounds()`, `constrain_equal()`, `constrain_fixed()`, `constrain_moderator()`, `constrain_shape()`, `constrain_link()` |
+| Assessment | `ccva_recommend()`, `ccva_check()`, `ccva_validate()`, `ccva_compare()`, `ccva_uncertainty()`, `ccva_calibrate()`, `ccva_classify()`, `ccva_rank()`, `ccva_aggregate()` |
 | Outputs | `ccva_plot()`, `ccva_report()` |
 | Extending | `ccva_register()`, `ccva_methods()` |
 
-See `vignette("ccva")` for the full walkthrough.
+See `vignette("ccva")` for the full walkthrough and `vignette("framework")` for the
+recommended workflow (method matching, assay control, formative components,
+causal links, calibrated risk, spatial prioritisation) step by step.
 
 ## Roadmap
 

@@ -13,6 +13,7 @@ as_ccva(
   id = NULL,
   direction = NULL,
   coords = NULL,
+  formative = NULL,
   na_action = c("omit", "fail")
 )
 }
@@ -42,6 +43,15 @@ value is range loss, takes `-1`.}
 
 \item{coords}{Optional character vector of two column names (longitude,
 latitude) used by [ccva_plot()] for maps.}
+
+\item{formative}{Optional components whose indicators are complementary
+*facets* rather than interchangeable measures of one construct -- e.g.
+adaptive capacity from dispersal ability and genetic diversity, which act
+through distinct mechanisms. Their indicators are not expected to
+covary, so [ccva_check()] does not flag a low Cronbach's alpha, and the
+latent model enters them as a composite (built by the component scoring
+method) instead of a reflective latent factor. Components not listed are
+reflective: their indicators are treated as interchangeable measures.}
 
 \item{na_action}{`"omit"` (default) drops rows with missing values in any
 used column, with a message; `"fail"` stops instead.}

@@ -32,6 +32,10 @@
 #'   outnumber units. The first `n_causal` markers carry signal from
 #'   \eqn{A^*}; the rest are noise.
 #' @param n_causal Number of informative genomic markers.
+#' @param link_AE Strength of a directed dependency of exposure on adaptive
+#'   capacity, \eqn{E^* \leftarrow E^* + link_{AE} A^*}. A negative value
+#'   mimics dispersal: species with more capacity to move face less of the
+#'   SDM-derived exposure. Default 0 (no link).
 #' @param seed Optional random seed.
 #'
 #' @return A `ccva_data` object (see [as_ccva()]) with an extra element
@@ -53,13 +57,14 @@ ccva_simulate <- function(n = 300, nonlinear = FALSE,
                                          -0.20, -0.25, 1.00), 3, 3),
                           b = c(E = 0.50, S = 0.35, A = 0.25),
                           sd_zeta = 0.30, n_genomic = 0, n_causal = 10,
-                          seed = NULL) {
+                          link_AE = 0, seed = NULL) {
   if (!is.null(seed)) set.seed(seed)
   stopifnot(n >= 10, all(dim(phi) == 3), length(b) == 3)
 
   ## Layer 1: correlated latent components
   eta <- matrix(stats::rnorm(n * 3), ncol = 3) %*% chol(phi)
   E <- eta[, 1]; S <- eta[, 2]; A <- eta[, 3]
+  if (link_AE != 0) E <- as.numeric(scale(E + link_AE * A))
 
   ## Layer 2: latent vulnerability
   if (nonlinear) {

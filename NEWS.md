@@ -18,3 +18,11 @@ First release.
   uncertainty (with factor-score error for latent models), calibrated
   classification, plots for every step and an HTML report.
 * Method registry `ccva_register()` for contributed methods.
+* Framework tools: directed links between components (`constrain_link()`)
+  with direct, indirect and total effects, or two-stage resolution;
+  formative components (`as_ccva(formative = )`) and mean inter-item
+  correlation in `ccva_check()`; concave / convex shapes
+  (`constrain_shape()`); calibrated risk predictions (`ccva_calibrate()`);
+  method recommendations by data availability (`ccva_recommend()`); assay
+  methodology adjustment (`ccva_adjust_method()`); community / site
+  aggregation (`ccva_aggregate()`); workflow vignette "framework".

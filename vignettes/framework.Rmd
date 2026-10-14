@@ -1,0 +1,209 @@
+---
+title: "A statistical CCVA workflow, step by step"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{A statistical CCVA workflow, step by step}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 7,
+                      fig.height = 4.4, dpi = 90, out.width = "100%")
+set.seed(2026)
+```
+
+This vignette walks through a statistically grounded CCVA workflow, one
+recommendation at a time: match the method to the data, control trait
+measurements for methodology, test how well the data measure each
+component, make causal hypotheses explicit, impose ecologically justified
+shapes, turn rankings into calibrated risk, and aggregate to sites for
+spatial prioritisation. It applies to any taxon. All data are simulated.
+
+```{r}
+library(ccva)
+```
+
+## 1. Match the method to the data
+
+A sensible default is shape-constrained parametric models for small
+samples, regularised regression for regional compilations, and flexible
+non-parametric methods for global databases. `ccva_recommend()` reads the
+number of species and of predictors per component and gives concrete steps:
+
+```{r}
+ccva_recommend(ccva_simulate(n = 40, seed = 1))
+```
+
+A regional compilation where genomic data make adaptive capacity
+high-dimensional gets a different route:
+
+```{r}
+regional <- ccva_simulate(n = 120, n_genomic = 250, seed = 2)
+ccva_recommend(regional)
+```
+
+## 2. Control sensitivity traits for methodology
+
+Heat tolerance depends on how it was measured: static or dynamic assays,
+ramping rate, starting temperature. Before comparing species, the
+methodological effect should be removed. `ccva_adjust_method()` estimates
+it within species and adjusts every measurement to a common reference
+protocol:
+
+```{r}
+assays <- data.frame(species = rep(sprintf("sp_%02d", 1:25), each = 3),
+                     ramp = rep(c(0.1, 0.25, 0.5), 25),
+                     assay = rep(c("dynamic", "dynamic", "static"), 25))
+true_ctmax <- rnorm(25, 44, 2)
+assays$ctmax <- rep(true_ctmax, each = 3) + 3 * assays$ramp -
+  1.2 * (assays$assay == "static") + rnorm(75, 0, 0.3)
+
+adj <- ccva_adjust_method(assays, "ctmax", c("ramp", "assay"),
+                          unit = "species")
+adj
+head(adj$by_unit)
+```
+
+`adj$by_unit$ctmax_adj` is then a sensitivity indicator for `as_ccva()`.
+Warming tolerance and thermal safety margins against measured or modelled
+microclimates come from `ccva_thermal_margin()`; sublethal performance
+traits, biotic-interaction metrics and effective population size enter as
+indicators in the same way.
+
+## 3. Test how well the data measure E, S and A
+
+Cronbach's alpha checks whether a component's indicators covary like
+measures of one construct. It is only expected to be high when they are
+interchangeable measures (*reflective*). When they are complementary
+facets -- dispersal ability and genetic diversity both contribute to
+adaptive capacity, through distinct mechanisms -- a low alpha is expected
+and is not a problem. Declare such components `formative`:
+
+```{r}
+d <- ccva_sim_data()
+d$formative <- "adaptive"
+ccva_check(d)
+```
+
+Alpha rises with the number of indicators, so the mean inter-item
+correlation is reported alongside it. In the latent model a formative
+component enters as a composite of its indicators rather than as a
+reflective factor.
+
+## 4. Make the causal hypotheses explicit
+
+A common causal hypothesis is that adaptive capacity acts on
+vulnerability partly *through* the other components: range shifts change
+the climate a species is exposed to, and plasticity or evolution of heat
+tolerance changes its sensitivity. Each arrow is a `constrain_link()`. The
+simulated data below contain such a dependency (species with more capacity
+to move face less exposure):
+
+```{r}
+s <- ccva_simulate(n = 400, link_AE = -0.6, seed = 4)
+causal <- ccva_combine(s, "latent",
+  shared_error = list(c("E1_risk", "E2_risk", "E3_risk")),
+  constraints = ccva_constraints(
+    constrain_link("adaptive", "exposure", "-"),
+    constrain_link("adaptive", "sensitivity", "-")))
+causal
+```
+
+```{r fig.height = 4}
+ccva_plot(causal, "structure")
+```
+
+The structural equation model estimates every arrow at once and splits
+the effect of adaptive capacity into a direct part and indirect parts
+through exposure and sensitivity. Ignoring the dependency would count part
+of adaptive capacity twice -- once in its own score and once inside
+exposure.
+
+The same links are resolved in two stages by the other models: the part of
+the target component explained by the source is removed before combining.
+
+```{r}
+ccva_combine(s, "weighted", constraints = ccva_constraints(
+  constrain_link("adaptive", "exposure")))
+```
+
+## 5. Shapes that ecology justifies
+
+Shape-constrained models keep the data in charge of the details while
+excluding implausible relationships. Beyond direction, curvature can be
+imposed: an exposure effect that saturates (concave) and a sensitivity
+effect that accelerates (convex).
+
+```{r fig.height = 3.2}
+nl <- ccva_simulate(n = 300, nonlinear = TRUE, seed = 7)
+curved <- ccva_combine(nl, "shape", constraints = ccva_constraints(
+  constrain_shape("exposure", "concave"),
+  constrain_shape("sensitivity", "convex")))
+ccva_plot(curved, "effects")
+```
+
+Dropping all constraints gives a flexible smooth model, appropriate for
+large databases: `ccva_combine(x, "shape", constraints =
+ccva_unconstrained())`.
+
+## 6. From rankings to calibrated risk
+
+A ranking says which species are more vulnerable than others; managers
+also need to know how likely a decline is.
+`ccva_calibrate()` turns vulnerability scores into the probability of an
+observed outcome -- here IUCN-like status of Vulnerable or worse -- and,
+given bootstrap draws, carries the uncertainty of the scores into the
+risk:
+
+```{r}
+fit <- ccva_combine(d, "latent",
+  shared_error = list(c("E1_risk", "E2_risk", "E3_risk")))
+unc <- ccva_uncertainty(fit, "bootstrap", R = 40, seed = 1,
+                        progress = FALSE)
+risk <- ccva_calibrate(fit, outcome = "iucn", uncertainty = unc,
+                       R = 200, seed = 1)
+risk
+```
+
+```{r fig.height = 4}
+ccva_plot(risk, "curve")
+```
+
+```{r fig.height = 5.5}
+ccva_plot(risk, "risk", n = 20)
+```
+
+Here the outcome was also used to fit the latent model, so the
+calibration is in-sample (the print-out says so). With real data,
+calibrate against an outcome the model did not use.
+
+## 7. Spatial prioritisation
+
+Conservation is often planned for places and communities rather than
+single species, especially for cryptic or poorly known taxa. `ccva_aggregate()` combines
+species-level results with occurrence records into community-level
+vulnerability per site, with intervals:
+
+```{r}
+occ <- unique(data.frame(site = rep(sprintf("site_%02d", 1:15), each = 30),
+                         species = sample(names(fit$score), 450,
+                                          replace = TRUE)))
+sites <- ccva_aggregate(fit, occ, uncertainty = unc)
+sites
+```
+
+```{r fig.height = 5}
+ccva_plot(sites)
+```
+
+## What is not (yet) in the package
+
+* **Unimodal shape constraints** and **tree-based flexible models**
+  (boosted regression trees, random forests) are not built in; tree-based
+  methods can be added with `ccva_register()`.
+* **Microclimate modelling** itself (e.g. NicheMapR, TrenchR) happens
+  upstream; its output enters as exposure indicators or through
+  `ccva_thermal_margin()`.
+* A **single Bayesian model** unifying latent vulnerability, shrinkage for
+  high-dimensional predictors and shape constraints remains future work.
