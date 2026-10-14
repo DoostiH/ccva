@@ -1,20 +1,18 @@
-## Submission
-
-This is a new submission.
-
 ## R CMD check results
 
 0 errors | 0 warnings | 1 note
 
-* This is a new release.
+* This is a new submission.
+* Possibly misspelled words in DESCRIPTION: 'CCVA' is the standard
+  abbreviation for climate change vulnerability assessment, 'Ofori' is an
+  author name, 'et al.' is a citation, and "component's" is a possessive.
 
 ## Test environments
 
-* local Ubuntu 24.04, R 4.3.3
-* GitHub Actions: ubuntu-latest, windows-latest, macos-latest (R release)
+* local Windows, R 4.6.1
 * win-builder (R-devel)
+* GitHub Actions: ubuntu-latest, windows-latest, macos-latest (R release)
 
-## Notes for reviewers
+## Notes
 
-* All data shipped with the package (`ccva_sim`) are simulated.
-* Examples and vignettes write only to tempdir().
+* All data shipped with the package are simulated.
