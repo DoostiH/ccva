@@ -8,3 +8,5 @@
 ^ccva_report\.html$
 ^doc$
 ^Meta$
+^cran-comments\.md$
+^CRAN-SUBMISSION$

@@ -158,6 +158,11 @@ Influence of adaptive capacity on the outcome of climate change
 vulnerability assessment. *Scientific Reports* 7, 12979.
 [doi:10.1038/s41598-017-13245-y](https://doi.org/10.1038/s41598-017-13245-y)
 
+## Author
+
+Hassan Doosti, Macquarie University
+([hassan.doosti@mq.edu.au](mailto:hassan.doosti@mq.edu.au))
+
 ## Licence
 
 GPL (≥ 3). All data shipped with the package are simulated and have no

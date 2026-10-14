@@ -6,7 +6,8 @@
 #' (and pandoc).
 #'
 #' @param fit A `ccva_fit`.
-#' @param file Output HTML file.
+#' @param file Output HTML file. Defaults to a file in the session's
+#'   temporary directory; give a path to keep the report.
 #' @param uncertainty Optional [ccva_uncertainty()] result.
 #' @param comparison Optional [ccva_compare()] result.
 #' @param title Report title.
@@ -14,11 +15,16 @@
 #' @return The path to the report, invisibly.
 #' @export
 #' @examples
-#' \dontrun{
-#' fit <- ccva_combine(ccva_sim_data(), "latent")
-#' ccva_report(fit, "my_ccva.html")
+#' \donttest{
+#' if (requireNamespace("rmarkdown", quietly = TRUE) &&
+#'     rmarkdown::pandoc_available()) {
+#'   fit <- ccva_combine(ccva_sim_data(), "weighted")
+#'   path <- ccva_report(fit, open = FALSE)
+#'   file.exists(path)
 #' }
-ccva_report <- function(fit, file = "ccva_report.html", uncertainty = NULL,
+#' }
+ccva_report <- function(fit, file = file.path(tempdir(), "ccva_report.html"),
+                        uncertainty = NULL,
                         comparison = NULL,
                         title = "Climate change vulnerability assessment",
                         open = interactive()) {

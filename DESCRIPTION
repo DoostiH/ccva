@@ -4,19 +4,22 @@ Title: Climate Change Vulnerability Assessment with Constrained Latent Models
 Version: 0.1.0
 Authors@R:
     person("Hassan", "Doosti", email = "hassan.doosti@mq.edu.au",
-           role = c("aut", "cre"))
+           role = c("aut", "cre", "cph"),
+           comment = c(affiliation = "Macquarie University"))
 Description: A general framework for climate change vulnerability assessment
     (CCVA) of any species and any dataset. Variables are tagged as exposure,
     sensitivity or adaptive capacity; each component is computed from its own
     predictors by a chosen method; and the three components are combined into
     vulnerability. Methods range from the conventional weighted index of
     Ofori et al. (2017) <doi:10.1038/s41598-017-13245-y> to shape-constrained
-    additive models, latent-variable structural equation models in which
-    vulnerability is inferred from observable proxies, and penalised regression
-    for high-dimensional predictors. Ecological knowledge enters as explicit
-    constraints on predictors and on each component's role in the model.
-    Diagnostics, validation against observed outcomes, bootstrap and
-    weight-based uncertainty, and plots for every step are included.
+    additive models ('scam'), latent-variable structural equation models
+    ('lavaan') in which vulnerability is inferred from observable proxies,
+    and penalised regression ('glmnet') for high-dimensional predictors.
+    Ecological knowledge enters as explicit constraints on predictors, on
+    each component's role and on the links between components. Diagnostics,
+    validation against observed outcomes, bootstrap and weight-based
+    uncertainty, calibrated risk predictions and plots for every step are
+    included.
 License: GPL (>= 3)
 URL: https://github.com/DoostiH/ccva
 BugReports: https://github.com/DoostiH/ccva/issues

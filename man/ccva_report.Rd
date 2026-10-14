@@ -6,7 +6,7 @@
 \usage{
 ccva_report(
   fit,
-  file = "ccva_report.html",
+  file = file.path(tempdir(), "ccva_report.html"),
   uncertainty = NULL,
   comparison = NULL,
   title = "Climate change vulnerability assessment",
@@ -16,7 +16,8 @@ ccva_report(
 \arguments{
 \item{fit}{A `ccva_fit`.}
 
-\item{file}{Output HTML file.}
+\item{file}{Output HTML file. Defaults to a file in the session's
+temporary directory; give a path to keep the report.}
 
 \item{uncertainty}{Optional [ccva_uncertainty()] result.}
 
@@ -36,8 +37,12 @@ optionally uncertainty and a method comparison. Needs \pkg{rmarkdown}
 (and pandoc).
 }
 \examples{
-\dontrun{
-fit <- ccva_combine(ccva_sim_data(), "latent")
-ccva_report(fit, "my_ccva.html")
+\donttest{
+if (requireNamespace("rmarkdown", quietly = TRUE) &&
+    rmarkdown::pandoc_available()) {
+  fit <- ccva_combine(ccva_sim_data(), "weighted")
+  path <- ccva_report(fit, open = FALSE)
+  file.exists(path)
+}
 }
 }
