@@ -1,0 +1,108 @@
+---
+title: "`r report_title`"
+date: "`r format(Sys.Date(), '%d %B %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE,
+                      fig.width = 8, fig.height = 4.8, dpi = 110)
+library(ccva)
+x <- fit$data
+```
+
+## Data
+
+```{r}
+x
+```
+
+```{r fig.height = 6}
+ccva_plot(x, "indicators")
+```
+
+## Diagnostics
+
+```{r}
+chk <- ccva_check(x)
+chk
+```
+
+```{r}
+ccva_plot(chk, "alpha")
+```
+
+## Components
+
+```{r fig.height = 3.5}
+ccva_plot(fit, "components")
+```
+
+```{r results = "asis"}
+for (cp in fit$components) {
+  cat("\n\n### ", tools::toTitleCase(cp$component), "\n\n", sep = "")
+  print(ccva_plot(cp, "importance"))
+}
+```
+
+## Vulnerability model
+
+```{r}
+fit
+fit$constraints$object
+```
+
+```{r fig.height = 4.5}
+ccva_plot(fit, "structure")
+```
+
+```{r eval = fit$method != "weighted", fig.height = 5}
+ccva_plot(fit, "effects")
+```
+
+```{r}
+ccva_plot(fit, "scores")
+```
+
+## Ranking
+
+```{r fig.height = 7}
+ccva_plot(fit, "ranking", n = 12)
+```
+
+```{r}
+rk <- ccva_rank(fit, unc)
+num <- vapply(rk, is.numeric, logical(1))
+rk[num] <- lapply(rk[num], round, 3)
+knitr::kable(utils::head(rk, 25), row.names = FALSE)
+```
+
+```{r eval = length(x$outcomes) > 0 || !is.null(x$truth)}
+knitr::kable(ccva_validate(fit), digits = 3,
+             caption = "Validation against observed outcomes")
+```
+
+```{r eval = !is.null(unc), results = "asis"}
+cat("## Uncertainty\n\n")
+```
+
+```{r eval = !is.null(unc), fig.height = 7}
+unc
+ccva_plot(unc, "intervals")
+```
+
+```{r eval = !is.null(cmp), results = "asis"}
+cat("## Method comparison\n\n")
+```
+
+```{r eval = !is.null(cmp), fig.height = 5}
+cmp
+ccva_plot(cmp, if (is.null(cmp$truth)) "validation" else "truth")
+```
+
+---
+*Generated with the ccva R package.*

@@ -1,0 +1,346 @@
+---
+title: "Climate change vulnerability assessment with ccva"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Climate change vulnerability assessment with ccva}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 7,
+                      fig.height = 4.4, dpi = 90, out.width = "100%")
+set.seed(2026)
+```
+
+A climate change vulnerability assessment (CCVA) asks which species are
+most at risk from climate change. Almost every CCVA rests on the same
+framework:
+
+$$\text{Vulnerability} = f(\text{Exposure}, \text{Sensitivity}, \text{Adaptive capacity}).$$
+
+In practice $f$ is usually a sum of expert-scored traits with arbitrary
+weights, never tested for internal consistency, never validated against an
+observable outcome, and reported without uncertainty. **ccva** keeps the
+framework but puts it on a statistical footing:
+
+1. **Data** -- any dataset; each column is tagged to a component.
+2. **Components** -- each computed from its own predictors by a chosen method.
+3. **Vulnerability** -- from the conventional weighted index (Ofori et al.
+   2017) to a latent-variable model in which vulnerability is *inferred*
+   from observable proxies.
+4. **Constraints** -- ecological knowledge imposed explicitly on predictors
+   and on each component's role.
+
+Every step has a plot. All data in this vignette are simulated and have no
+biological meaning.
+
+```{r}
+library(ccva)
+```
+
+## 1. Data
+
+`ccva_sim` holds 300 simulated species generated from a known latent
+structure: correlated latent exposure, sensitivity and adaptive capacity
+drive a latent vulnerability $V^*$. Each component is observed only through
+its indicators, and vulnerability only through three proxies -- an
+IUCN-like status, a population trend and range change. Because the truth is
+known, we can check which method recovers it.
+
+`as_ccva()` is the data contract. It tags each column to a component and
+records its **direction**: whether a higher value means *more* of the
+component (or, for an outcome, *more* vulnerable). A declining population
+trend and a range loss are bad news, so both get direction `-1`:
+
+```{r}
+d <- as_ccva(ccva_sim,
+  exposure    = c("E1_risk", "E2_risk", "E3_risk"),
+  sensitivity = grep("^s[0-9]+_", names(ccva_sim), value = TRUE),
+  adaptive    = grep("^a[0-9]+_", names(ccva_sim), value = TRUE),
+  outcomes    = c("iucn", "pop_trend", "range_change"),
+  direction   = c(pop_trend = -1, range_change = -1),
+  id = "species")
+d$truth <- ccva_sim[c("E_star", "S_star", "A_star", "V_star")]
+d
+```
+
+(`ccva_sim_data()` does exactly this in one call.) With real data, the
+exposure indicators usually come from a species distribution model.
+`ccva_sdm_exposure()` turns the cell counts of thresholded current and
+future habitat maps into Ofori's three exposure indices, already recoded so
+that higher means more exposed:
+
+```{r}
+ccva_sdm_exposure(n_current = c(120, 80), n_future = c(60, 95),
+                  n_overlap = c(50, 70), n_protected = c(30, 10))
+```
+
+```{r fig.height = 7.5}
+ccva_plot(d, "indicators")
+```
+
+### Before combining anything: diagnostics
+
+Summing indicators assumes they measure one construct; adding components
+assumes they are not redundant. `ccva_check()` tests both.
+
+```{r}
+chk <- ccva_check(d)
+chk
+```
+
+```{r fig.height = 3}
+ccva_plot(chk, "alpha")
+```
+
+## 2. The conventional baseline: Ofori et al. (2017)
+
+Ofori and colleagues scored every indicator 1--3, summed the scores within
+each component, and combined the components. `component_method =
+"ordinal"` reproduces the scoring; the weighted method uses the corrected
+normalisation $V = (E + S - A + 1)/3$, which maps the full range of
+$E + S - A$ onto $[0, 1]$ without clipping.
+
+```{r}
+ofori <- ccva_combine(d, "weighted", component_method = "ordinal")
+ofori
+```
+
+```{r fig.height = 3.6}
+ccva_plot(ofori, "structure")
+```
+
+```{r fig.height = 3}
+ccva_plot(ofori, "components")
+```
+
+The weighted index makes it easy to see what drives each species' score:
+
+```{r fig.height = 5.5}
+ccva_plot(ofori, "contributions", n = 8)
+```
+
+## 3. Vulnerability as a latent variable
+
+Vulnerability is never observed directly; we observe its consequences. The
+latent model treats it that way: $V^*$ is measured by the three outcome
+proxies and caused by latent exposure, sensitivity and adaptive capacity,
+each measured by its own indicators.
+
+The three exposure indices share a denominator (current habitat area), so
+their errors are correlated. We declare that in `shared_error`; it is
+modelled by an orthogonal method factor.
+
+```{r}
+latent <- ccva_combine(d, "latent",
+  shared_error = list(c("E1_risk", "E2_risk", "E3_risk")))
+latent
+```
+
+```{r fig.height = 3.6}
+ccva_plot(latent, "structure")
+```
+
+The measurement model shows how strongly each indicator reflects its
+component -- a data-driven replacement for expert weights:
+
+```{r fig.height = 7.5}
+ccva_plot(latent, "effects")
+```
+
+### Which method recovers the truth?
+
+```{r}
+cmp <- ccva_compare(ofori = ofori, latent = latent)
+cmp
+```
+
+```{r fig.height = 4}
+ccva_plot(cmp, "truth")
+```
+
+The latent model recovers the true vulnerability better than the Ofori
+index, because it uses the outcome proxies to infer $V^*$ instead of
+computing it from discretised scores. Rankings change between methods:
+
+```{r fig.height = 5}
+ccva_plot(cmp, "ranks")
+```
+
+## 4. Constraints: imposing ecological knowledge
+
+Free estimation ignores what ecologists already know. In ccva that
+knowledge is imposed explicitly, at two levels:
+
+* **predictor level** -- the sign of each indicator's loading, bounds,
+  equality between indicators, or a fixed value (0 drops it);
+* **component level** -- exposure and sensitivity raise vulnerability,
+  adaptive capacity lowers it; bounds on the effects; or adaptive capacity
+  acting only as a moderator.
+
+The default constraints encode the standard ecological directions:
+
+```{r}
+ccva_default_constraints()
+```
+
+Rules are added on top of the defaults:
+
+```{r}
+cons <- ccva_constraints(
+  constrain_equal(c("a1_genetic", "a2_bodysize")),
+  constrain_fixed("s7_repromode", 0),
+  constrain_bounds("exposure", lower = 0, upper = 2))
+cons
+fit_c <- ccva_combine(d, "latent", constraints = cons,
+  shared_error = list(c("E1_risk", "E2_risk", "E3_risk")))
+fit_c$details$effects
+```
+
+### When do constraints matter?
+
+With 300 species the free estimates already have the ecological signs, so
+constraints change little. CCVAs, however, are usually run on a few dozen
+species. Here we fit the latent model with and without constraints to 20
+simulated datasets of 50 species each:
+
+```{r}
+small_n <- do.call(rbind, lapply(1:20, function(i) {
+  s <- ccva_simulate(n = 50, seed = 100 + i)
+  run <- function(cons) {
+    f <- tryCatch(suppressWarnings(ccva_combine(s, "latent",
+           constraints = cons,
+           shared_error = list(c("E1_risk", "E2_risk", "E3_risk")))),
+           error = function(e) NULL)
+    if (is.null(f)) return(c(converged = 0, rho = NA))
+    c(converged = f$details$converged,
+      rho = cor(f$score, s$truth$V_star, method = "spearman"))
+  }
+  rbind(data.frame(model = "constrained", t(run(NULL))),
+        data.frame(model = "free", t(run(ccva_unconstrained()))))
+}))
+aggregate(cbind(converged, rho) ~ model, small_n, mean, na.action = na.pass)
+```
+
+Imposing the ecological directions is what lets the latent model converge
+reliably at realistic sample sizes. Sign constraints on loadings have a
+second benefit: the sign of a latent factor is otherwise arbitrary, and an
+unconstrained fit can return vulnerability upside down. With every loading
+pinned to its ecological direction that cannot happen.
+
+### Adaptive capacity as a moderator
+
+Biologically, adaptive capacity does nothing on its own: it modulates the
+impact of exposure and sensitivity. `constrain_moderator()` removes its main
+effect. In the shape-constrained model this fits monotone interaction
+surfaces $f_{EA}(E, A) + f_{SA}(S, A)$; in the weighted index it gives
+$V \propto E(1 - \gamma_E A) + S(1 - \gamma_S A)$.
+
+```{r fig.height = 3.6}
+mod <- ccva_combine(d, "shape",
+                    constraints = ccva_constraints(constrain_moderator()))
+ccva_plot(mod, "structure")
+```
+
+Without the moderator constraint, the shape-constrained model learns the
+*shape* of each component's effect from data while the *direction* is fixed:
+
+```{r fig.height = 3.2}
+shape <- ccva_combine(d, "shape")
+ccva_plot(shape, "effects")
+```
+
+## 5. High-dimensional predictors
+
+Some components arrive with more predictors than species -- genomic markers
+for adaptive capacity are the obvious case. The penalised two-stage method
+estimates latent vulnerability from the outcomes, then regresses it on every
+predictor with a LASSO whose coefficient signs follow the constraints.
+
+```{r}
+g <- ccva_simulate(n = 150, n_genomic = 300, n_causal = 10, seed = 3)
+length(unlist(g$indicators))   # predictors
+pen <- ccva_combine(g, "penalised")
+pen
+```
+
+```{r fig.height = 5.5}
+ccva_plot(pen, "effects")
+```
+
+## 6. How certain is the ranking?
+
+A sorted list of point estimates implies a precision the data rarely
+support. `ccva_uncertainty()` refits the whole pipeline on bootstrap
+resamples; for the latent model each species' factor-score error is added
+as well.
+
+```{r}
+unc <- ccva_uncertainty(latent, "bootstrap", R = 40, seed = 1,
+                        progress = FALSE)
+unc
+```
+
+```{r fig.height = 6}
+ccva_plot(unc, "intervals", n = 25)
+```
+
+For the weighted index, a second question is how much the ranking depends
+on the arbitrary choice of weights:
+
+```{r}
+ccva_uncertainty(ofori, "weights", R = 1000, seed = 1)
+```
+
+## 7. Classification and outputs
+
+Cut-offs at 1/3 and 2/3 assume uniformly distributed scores. Alternatives
+calibrate them to an observed outcome or to natural clusters:
+
+```{r}
+sapply(c("uniform", "quantile", "mixture", "roc"), function(m)
+  table(ccva_classify(latent$score, m, data = d)))
+```
+
+```{r fig.height = 6}
+ccva_plot(latent, "ranking", n = 8)
+```
+
+```{r}
+head(ccva_rank(latent, unc))
+```
+
+`ccva_report(latent, "report.html", uncertainty = unc, comparison = cmp)`
+writes all of this into one reproducible HTML report.
+
+## 8. Extending the framework
+
+New component or combination methods register with `ccva_register()` and
+are then used exactly like built-in ones:
+
+```{r}
+ccva_register("median", function(X, anchor, signs, ...) {
+  z <- scale(X)
+  ctr <- attr(z, "scaled:center"); scl <- attr(z, "scaled:scale")
+  list(score = apply(z, 1, median),
+       predict = function(M) apply(scale(M, ctr, scl), 1, median))
+}, type = "component", description = "Median of standardised indicators")
+
+ccva_sensitivity(d, method = "median")
+ccva_unregister("median")
+```
+
+## References
+
+Ofori, B. Y., Stow, A. J., Baumgartner, J. B. and Beaumont, L. J. (2017).
+Influence of adaptive capacity on the outcome of climate change
+vulnerability assessment. *Scientific Reports* 7, 12979.
+
+Bollen, K. A. (1989). *Structural Equations with Latent Variables*. Wiley.
+
+Pya, N. and Wood, S. N. (2015). Shape constrained additive models.
+*Statistics and Computing* 25, 543--559.
+
+Rosseel, Y. (2012). lavaan: an R package for structural equation modeling.
+*Journal of Statistical Software* 48(2), 1--36.

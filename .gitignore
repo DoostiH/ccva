@@ -1,0 +1,9 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+*.Rcheck/
+ccva_*.tar.gz
+inst/doc
+/doc/
+/Meta/

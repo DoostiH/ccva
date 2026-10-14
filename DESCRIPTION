@@ -1,0 +1,40 @@
+Package: ccva
+Type: Package
+Title: Climate Change Vulnerability Assessment with Constrained Latent Models
+Version: 0.1.0
+Authors@R:
+    person("Hassan", "Doosti", email = "hassan.doosti@mq.edu.au",
+           role = c("aut", "cre"))
+Description: A general framework for climate change vulnerability assessment
+    (CCVA) of any species and any dataset. Variables are tagged as exposure,
+    sensitivity or adaptive capacity; each component is computed from its own
+    predictors by a chosen method; and the three components are combined into
+    vulnerability. Methods range from the conventional weighted index of
+    Ofori et al. (2017) <doi:10.1038/s41598-017-13245-y> to shape-constrained
+    additive models, latent-variable structural equation models in which
+    vulnerability is inferred from observable proxies, and penalised regression
+    for high-dimensional predictors. Ecological knowledge enters as explicit
+    constraints on predictors and on each component's role in the model.
+    Diagnostics, validation against observed outcomes, bootstrap and
+    weight-based uncertainty, and plots for every step are included.
+License: GPL (>= 3)
+URL: https://github.com/DoostiH/ccva
+BugReports: https://github.com/DoostiH/ccva/issues
+Encoding: UTF-8
+Depends:
+    R (>= 4.1.0)
+Imports:
+    ggplot2 (>= 3.4.0),
+    lavaan (>= 0.6-12),
+    stats,
+    utils
+Suggests:
+    scam,
+    glmnet,
+    knitr,
+    rmarkdown,
+    testthat (>= 3.0.0)
+VignetteBuilder: knitr
+Config/testthat/edition: 3
+LazyData: true
+RoxygenNote: 7.3.1
