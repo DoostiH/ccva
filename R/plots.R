@@ -410,19 +410,18 @@ ccva_plot.ccva_fit <- function(object, type = NULL, n = 15, ...) {
         arrow = ggplot2::arrow(length = ggplot2::unit(2.5, "mm"),
                                type = "closed"))
     }
-    p <- p + ggplot2::geom_label(data = ld, ggplot2::aes(lx, ly, label = lab),
-                                 size = 3, label.size = 0, fill = "white",
+    p <- p + .geom_label_nb(data = ld, ggplot2::aes(lx, ly, label = lab),
+                                 size = 3, fill = "white",
                                  colour = "#33332f")
   }
-  p + ggplot2::geom_label(data = edges[!(mod & edges$component == "adaptive"), ],
+  p + .geom_label_nb(data = edges[!(mod & edges$component == "adaptive"), ],
                           ggplot2::aes(lx, ly, label = label),
-                          size = 3.3, label.size = 0, fill = "white",
+                          size = 3.3, fill = "white",
                           colour = "#33332f") +
-    ggplot2::geom_label(data = nodes, ggplot2::aes(x, y, label = label,
+    .geom_label_nb(data = nodes, ggplot2::aes(x, y, label = label,
                                                    fill = id),
                         colour = "white", size = 3.8, fontface = "bold",
-                        label.padding = ggplot2::unit(0.55, "lines"),
-                        label.size = 0) +
+                        label.padding = ggplot2::unit(0.55, "lines")) +
     ggplot2::scale_colour_manual(values = ccva_colours, guide = "none") +
     ggplot2::scale_fill_manual(values = ccva_colours, guide = "none") +
     ggplot2::scale_x_continuous(limits = c(if (is.null(lk)) 0.3 else -0.05,
@@ -720,8 +719,8 @@ ccva_plot.ccva_uncertainty <- function(object, type = NULL, n = 40, ...) {
     sel$unit <- factor(sel$unit, levels = rev(sel$unit))
     return(
       ggplot2::ggplot(sel, ggplot2::aes(estimate, unit)) +
-        ggplot2::geom_errorbarh(ggplot2::aes(xmin = lower, xmax = upper),
-                                height = 0, linewidth = 1.6,
+        ggplot2::geom_errorbar(ggplot2::aes(xmin = lower, xmax = upper), orientation = "y",
+                            width = 0, linewidth = 1.6,
                                 colour = "#cbbad9") +
         ggplot2::geom_point(colour = ccva_colours[["vulnerability"]],
                             size = 2.4) +
@@ -814,8 +813,8 @@ ccva_plot.ccva_calibration <- function(object, type = NULL, n = 25, ...) {
   u <- utils::head(object$units, n)
   u$unit <- factor(u$unit, levels = rev(u$unit))
   ggplot2::ggplot(u, ggplot2::aes(probability, unit)) +
-    ggplot2::geom_errorbarh(ggplot2::aes(xmin = lower, xmax = upper),
-                            height = 0, linewidth = 1.6, colour = "#cbbad9") +
+    ggplot2::geom_errorbar(ggplot2::aes(xmin = lower, xmax = upper), orientation = "y",
+                            width = 0, linewidth = 1.6, colour = "#cbbad9") +
     ggplot2::geom_point(colour = ccva_colours[["vulnerability"]], size = 2.4) +
     ggplot2::scale_x_continuous(limits = c(0, 1)) +
     ggplot2::labs(title = sprintf("Risk of decline for the %d highest-risk units", nrow(u)),
@@ -851,8 +850,8 @@ ccva_plot.ccva_sites <- function(object, type = NULL, n = 25, ...) {
   d$site <- factor(d$site, levels = rev(d$site))
   p <- ggplot2::ggplot(d, ggplot2::aes(mean_vulnerability, site))
   if (!is.null(d$lower))
-    p <- p + ggplot2::geom_errorbarh(ggplot2::aes(xmin = lower, xmax = upper),
-                                     height = 0, linewidth = 1.6,
+    p <- p + ggplot2::geom_errorbar(ggplot2::aes(xmin = lower, xmax = upper), orientation = "y",
+                            width = 0, linewidth = 1.6,
                                      colour = "#cbbad9")
   xr <- max(c(d$mean_vulnerability, d$upper), na.rm = TRUE)
   p + ggplot2::geom_point(colour = ccva_colours[["vulnerability"]], size = 2.8) +
@@ -865,4 +864,13 @@ ccva_plot.ccva_sites <- function(object, type = NULL, n = 25, ...) {
                   subtitle = "Mean vulnerability of each site's species, with interval when uncertainty is supplied",
                   x = "Mean vulnerability", y = NULL) +
     theme_ccva()
+}
+
+# geom_label() without a border, on old and new ggplot2: the border width
+# argument was renamed from `label.size` to `linewidth` in ggplot2 3.5.0.
+.geom_label_nb <- function(...) {
+  if (utils::packageVersion("ggplot2") >= "3.5.0")
+    ggplot2::geom_label(..., linewidth = 0)
+  else
+    ggplot2::geom_label(..., label.size = 0)
 }
